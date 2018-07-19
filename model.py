@@ -9,9 +9,8 @@ logger = logging.getLogger(__name__)
 
 class PointNet(nn.Module):
     """PointNet for classification task."""
-    # TODO(leoyolo): update bn momentum
 
-    def __init__(self, in_channels, out_channels, p=0.7):
+    def __init__(self, in_channels, out_channels, p=0.3):
         super(PointNet, self).__init__()
         self.conv1 = nn.Conv1d(in_channels, 64, kernel_size=1)
         self.conv2 = nn.Conv1d(64, 64, kernel_size=1)
@@ -52,7 +51,8 @@ class PointNet(nn.Module):
         x = F.relu(self.bn3(self.conv3(x)))
         x = F.relu(self.bn4(self.conv4(x)))
         x = F.relu(self.bn5(self.conv5(x)))
-        x = self.pool(x).squeeze()  # 2-D tensor [N, 1024]
+        x = self.pool(x).squeeze(-1)  # 2-D tensor [N, 1024]
+        # NOTE: paper says only one dropout layer, but code has two.
         x = F.relu(self.bn6(self.fc1(x)))
         x = self.dropout1(x)
         x = F.relu(self.bn7(self.fc2(x)))
@@ -63,7 +63,7 @@ class PointNet(nn.Module):
     def reset_parameters(self):
         for m in self.modules():
             if isinstance(m, (nn.Conv1d, nn.Linear)):
-                nn.init.xavier_normal_(m.weight)
+                nn.init.xavier_uniform_(m.weight)
                 m.bias.data.zero_()
             elif isinstance(m, nn.BatchNorm1d):
                 m.reset_parameters()
@@ -104,7 +104,7 @@ class TNet(nn.Module):
         x = F.relu(self.bn1(self.conv1(input)))
         x = F.relu(self.bn2(self.conv2(x)))
         x = F.relu(self.bn3(self.conv3(x)))
-        x = self.pool(x).squeeze()
+        x = self.pool(x).squeeze(-1)
         x = F.relu(self.bn4(self.fc1(x)))
         x = F.relu(self.bn5(self.fc2(x)))
         out = self.fc3(x).view(-1, self.K, self.K)
@@ -113,7 +113,7 @@ class TNet(nn.Module):
     def reset_parameters(self):
         for m in self.modules():
             if isinstance(m, (nn.Conv1d, nn.Linear)):
-                nn.init.xavier_normal_(m.weight)
+                nn.init.xavier_uniform_(m.weight)
                 m.bias.data.zero_()
             elif isinstance(m, nn.BatchNorm1d):
                 m.reset_parameters()
