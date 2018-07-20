@@ -22,7 +22,7 @@ def parse_args():
     parser.add_argument('--dataset', type=str, default='modelnet40', help='Which dataset to train and test on')
     parser.add_argument('--cuda_on', type=bool, default=True, help='Whether to train and test on GPUs')
     parser.add_argument('--rng_seed', type=int, default=-1, help='Random seed')
-    parser.add_argument('--batch_size', type=int, default=128, help='Batch size for training')
+    parser.add_argument('--batch_size', type=int, default=512, help='Batch size for training')
     parser.add_argument('--resume', type=str, default=None, help='Resume from checkpoint')
     parser.add_argument('--num_workers', type=int, default=4, help='No of workers for data loading')
     parser.add_argument('--epochs', type=int, default=250, help='Total epochs to go through for training')
@@ -35,10 +35,14 @@ def parse_args():
     parser.add_argument('--optimizer', type=str, default='adam', help='Which optimizer to use (SGD/ADAM)')
     parser.add_argument('--num_points', type=int, default=1024, help='No of datapoints for each model')
     parser.add_argument('--lambda', type=float, dest='lmbda', default=1e-3, help='lambda between cls loss and reg loss')
-    parser.add_argument('--snapshot_interval', type=int, default=-1, help='How many epochs should make a snapshot')
+    parser.add_argument('--snapshot_interval', type=int, default=50, help='How many epochs should make a snapshot')
     parser.add_argument('--run_test', type=bool, default=True, help='Whether should run test')
-    parser.add_argument('--test_batch_size', type=int, default=1, help='Batch size for testing')
-    parser.add_argument('--multigpu', type=bool, default=False, help='Whether to train on multiple gpus')
+    parser.add_argument('--test_batch_size', type=int, default=4, help='Batch size for testing')
+    parser.add_argument('--multigpu', type=bool, default=True, help='Whether to train on multiple gpus')
+    parser.add_argument('--bn_momentum', type=float, default=0.5, help='Initial value of bn momentum')
+    parser.add_argument('--bn_stepsize', type=int, default=10, help='How many epoch should decrease bn momentum')
+    parser.add_argument('--bn_gamma', type=float, default=0.5, help='Drease factor for bn momentum update')
+    parser.add_argument('--bn_min_momentum', type=float, default=0.01, help='Minimal value of bn momentum')
     args = parser.parse_args()
     return args
 
@@ -71,6 +75,9 @@ def train_model(args):
     point_net = PointNet(3, 40)
     if args.cuda_on:
         point_net = point_net.cuda()
+    for m in point_net.modules():
+        if isinstance(m, torch.nn.BatchNorm1d):
+            m.momentum = args.bn_momentum
     if args.multigpu:
         point_net = torch.nn.DataParallel(point_net)
     if args.optimizer.lower() == 'sgd':
@@ -124,11 +131,20 @@ def train_model(args):
             ins_acc, cls_acc = test_model(point_net, args)
             logger.info('Instance accuracy: %.3f, class accuracy: %.3f',
                         ins_acc, cls_acc)
+        # update learning rate
         if (e+1) % args.stepsize == 0:
             args.lr = max(args.lr * args.gamma, args.min_lr)
             for param_group in optimizer.param_groups:
                 param_group['lr'] = args.lr
             logger.info('Learning rate set to %g', args.lr)
+        # update bn momentum
+        if (e+1) % args.bn_stepsize == 0:
+            args.bn_momentum = max(args.bn_momentum*args.bn_gamma,
+                                   args.bn_min_momentum)
+            for m in point_net.modules():
+                if isinstance(m, torch.nn.BatchNorm1d):
+                    m.momentum = args.bn_momentum
+            logger.info('BatchNorm momentum set to %g', args.bn_momentum)
     if args.snapshot_interval > 0:
         filename = os.path.join(args.root_path, '{}.{}.pth'.format(
             'PointNetCls', args.dataset
