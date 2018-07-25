@@ -4,6 +4,7 @@
 import argparse
 import datetime
 import logging
+import pprint
 import os
 import sys
 import time
@@ -31,7 +32,7 @@ def parse_args():
     parser.add_argument('--min_lr', type=float, default=1e-5, help='Minimal value of learning rate')
     parser.add_argument('--momentum', type=float, default=0.9, help='lr momentum for SGD')
     parser.add_argument('--weight_decay', type=float, default=0., help='Weight decay for optimizer')
-    parser.add_argument('--gamma', type=float, default=0.5, help='Gamma update for optimizer')
+    parser.add_argument('--gamma', type=float, default=0.7, help='Gamma update for optimizer')
     parser.add_argument('--stepsize', type=int, default=20, help='How many epochs should decrease lr')
     parser.add_argument('--optimizer', type=str, default='adam', help='Which optimizer to use (SGD/ADAM)')
     parser.add_argument('--num_points', type=int, default=1024, help='No of datapoints for each model')
@@ -195,7 +196,8 @@ def main():
             'train_test' if args.test_interval > 0 else 'train'
         )
     )
-    setup_logging(__name__, log_name)
+    logger = setup_logging(__name__, log_name)
+    logger.info(pprint.pformat(args))
     if args.rng_seed >= 0:
         np.random.seed(args.rng_seed)
         torch.manual_seed(args.rng_seed)
