@@ -108,7 +108,9 @@ def train_model(args):
             out, t1, t2 = point_net(data)
             _, predicted = out.max(dim=-1)
             closs = F.cross_entropy(out, labels)
-            tloss = TransformRegLoss()(t1) + TransformRegLoss()(t2)
+            #  tloss = TransformRegLoss()(t1) + TransformRegLoss()(t2)
+            # NOTE: only regularize over feature transform matrix
+            tloss = TransformRegLoss()(t2)
             loss = closs + args.lmbda * tloss
             train_accuracy = (predicted==labels).sum().item() / len(labels)
             if time.time() - tic > 5:  # 5 sec
