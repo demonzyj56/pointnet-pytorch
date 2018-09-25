@@ -66,7 +66,8 @@ class PointNet(nn.Module):
                 nn.init.xavier_uniform_(m.weight)
                 m.bias.data.zero_()
             elif isinstance(m, nn.BatchNorm1d):
-                m.reset_parameters()
+                m.weight.data.fill_(1.)
+                m.bias.data.zero_()
         self.input_transform.reset_parameters()
         self.feature_transform.reset_parameters()
 
@@ -117,7 +118,8 @@ class TNet(nn.Module):
                 nn.init.xavier_uniform_(m.weight)
                 m.bias.data.zero_()
             elif isinstance(m, nn.BatchNorm1d):
-                m.reset_parameters()
+                m.weight.data.fill_(1.)
+                m.bias.data.zero_()
         self.fc3.weight.data.zero_()
         self.fc3.bias.data.copy_(torch.eye(self.K).view(-1))
 
@@ -174,4 +176,5 @@ class PointNetSemSegV1(nn.Module):
                 nn.init.xavier_uniform_(m.weight)
                 m.bias.data.zero_()
             elif isinstance(m, nn.BatchNorm1d):
-                m.reset_parameters()
+                m.weight.data.fill_(1.)
+                m.bias.data.zero_()
