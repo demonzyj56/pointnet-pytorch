@@ -93,6 +93,7 @@ def train_model(args):
         raise ValueError('Unknown optimizer: {}'.format(args.optimizer))
     logger = logging.getLogger(__name__)
     for e in range(args.epochs):
+        etic = time.time()
         point_net.train()
         logger.info('Training on epoch %d/%d', e+1, args.epochs)
         loader = torch.utils.data.DataLoader(
@@ -108,7 +109,6 @@ def train_model(args):
             out, t1, t2 = point_net(data)
             _, predicted = out.max(dim=-1)
             closs = F.cross_entropy(out, labels)
-            #  tloss = TransformRegLoss()(t1) + TransformRegLoss()(t2)
             # NOTE: only regularize over feature transform matrix
             tloss = TransformRegLoss()(t2)
             loss = closs + args.lmbda * tloss
@@ -137,19 +137,20 @@ def train_model(args):
             logger.info('Instance accuracy: %.3f, class accuracy: %.3f',
                         ins_acc, cls_acc)
         # update learning rate
-        if (e+1) % args.stepsize == 0:
+        if (args.stepsize > 0) and ((e+1) % args.stepsize == 0):
             args.lr = max(args.lr * args.gamma, args.min_lr)
             for param_group in optimizer.param_groups:
                 param_group['lr'] = args.lr
             logger.info('Learning rate set to %g', args.lr)
         # update bn momentum
-        if (e+1) % args.bn_stepsize == 0:
+        if (args.bn_stepsize > 0) and ((e+1) % args.bn_stepsize == 0):
             args.bn_momentum = max(args.bn_momentum*args.bn_gamma,
                                    args.bn_min_momentum)
             for m in point_net.modules():
                 if isinstance(m, torch.nn.BatchNorm1d):
                     m.momentum = args.bn_momentum
             logger.info('BatchNorm momentum set to %g', args.bn_momentum)
+        logger.info('Elapsed time for epoch %d: %.3fs', e+1, time.time()-etic)
     if args.snapshot_interval > 0:
         filename = os.path.join(args.root_path, '{}.{}.pth'.format(
             'PointNetCls', args.dataset
@@ -203,6 +204,7 @@ def main():
     if args.rng_seed >= 0:
         np.random.seed(args.rng_seed)
         torch.manual_seed(args.rng_seed)
+        torch.cuda.manual_seed_all(args.rng_seed)
     train_model(args)
 
 
