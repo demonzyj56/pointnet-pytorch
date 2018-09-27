@@ -11,7 +11,7 @@ import time
 import numpy as np
 import torch
 import torch.nn.functional as F
-from model import PointNet
+from pointnet import PointNet
 from loss import TransformRegLoss
 from modelnet.modelnet import ModelNetCls, PCAugmentation, collate_fn
 
