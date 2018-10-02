@@ -2,6 +2,9 @@
  * We use a simple implementation for farthest point sampling which involves to steps:
  * 1. Calculate the distance between any two points.
  * 2. Sort the distance for each point with descending order.
+ * 
+ * Some part of code is adapted from:
+ *   https://stackoverflow.com/questions/28150098/how-to-use-thrust-to-sort-the-rows-of-a-matrix
  */
 #include <ATen/ATen.h>
 #include <cuda.h>
@@ -15,22 +18,33 @@
 #include <thrust/fill.h>
 #include <thrust/copy.h>
 
+// Timer of debug purpose
+#include <iostream>
+#include <stdlib.h>
+#include <time.h>
+#include <sys/time.h>
+#define USECPSEC 1000000ULL
+
+unsigned long long dtime_usec(unsigned long long start){
+
+  timeval tv;
+  gettimeofday(&tv, 0);
+  return ((tv.tv_sec*USECPSEC)+tv.tv_usec)-start;
+}
 
 template <typename scalar_t, typename index_t>
-void vectorized_argsort_descending(const int n, const int m, scalar_t *d_data, index_t *d_idx) {
+void vectorized_argsort_descending(const int n, const int m, scalar_t *d_data, 
+        index_t *d_idx, int *d_segments) {
     thrust::device_ptr<scalar_t> data_ptr = thrust::device_pointer_cast<scalar_t>(d_data);
-    thrust::device_ptr<index_t>  idx_ptr = thrust::device_pointer_cast<index_t>(d_idx);
-    thrust::device_vector<int> d_segments(n*m);
+    thrust::device_ptr<index_t> idx_ptr = thrust::device_pointer_cast<index_t>(d_idx);
+    thrust::device_ptr<int> segments_ptr = thrust::device_pointer_cast<int>(d_segments);
     thrust::device_vector<scalar_t> d_data_copy(n*m);
-    for (int i = 0; i < n; ++i) {
-        thrust::fill_n(thrust::device, d_segments.begin()+m*i, m, i);
-    }
-    thrust::copy(data_ptr, data_ptr+n*m, d_data_copy.begin());
-    thrust::stable_sort_by_key(thrust::device, d_data, d_data+n*m, d_segments.begin(),
+    thrust::copy(thrust::device, data_ptr, data_ptr+n*m, d_data_copy.begin());
+    thrust::stable_sort_by_key(thrust::device, d_data, d_data+n*m, segments_ptr,
             thrust::greater<scalar_t>());
     thrust::stable_sort_by_key(thrust::device, d_data_copy.begin(), d_data_copy.end(), idx_ptr,
             thrust::greater<scalar_t>());
-    thrust::stable_sort_by_key(thrust::device, d_segments.begin(), d_segments.end(), idx_ptr);
+    thrust::stable_sort_by_key(thrust::device, segments_ptr, segments_ptr+n*m, idx_ptr);
 }
 
 
@@ -76,6 +90,14 @@ __global__ void batch_sampling_kernel(const size_t batch_size, const size_t num_
     }
 }
 
+__global__ void index_assignment_kernel(const int n, const int m, int* __restrict__ idx, 
+        int* __restrict__ segments) {
+    for (auto index = blockIdx.x * blockDim.x + threadIdx.x; index < n*m; index += blockDim.x * gridDim.x) {
+        idx[index] = index % m;
+        segments[index] = index / m;
+    } 
+}
+
 void fps_cuda_forward(at::Tensor pcs, at::Tensor out) {
     // create distance map
     const auto batch_size = pcs.size(0);
@@ -85,19 +107,31 @@ void fps_cuda_forward(at::Tensor pcs, at::Tensor out) {
     float *dist_map_ptr = thrust::raw_pointer_cast(dist_map.data());
     const int threads = 1024;
     const int blocks = (batch_size * num_points * num_points + threads - 1) / threads;
+
+    /* unsigned long long tic = dtime_usec(0); */
     AT_DISPATCH_FLOATING_TYPES(pcs.type(), "dist_map_forward_kernel", ([&] {
         dist_map_forward_kernel<<<blocks, threads>>>(
             batch_size, num_points, num_points, pcs.data<scalar_t>(), pcs.data<scalar_t>(),
             dist_map_ptr);
     }));
     cudaDeviceSynchronize();
+    /* std::cout << "dist map time: " << dtime_usec(tic)/(float)USECPSEC << "s" << std::endl; */
+
+    /* tic = dtime_usec(0); */
+    // Two auxiliary pointers for argsort.
     thrust::device_vector<int> argmax_idx(batch_size*num_points*num_points);
-    for (int i = 0; i < batch_size*num_points; ++i) {
-        thrust::sequence(argmax_idx.begin()+i*num_points, argmax_idx.begin()+(i+1)*num_points);
-    }
     int *argmax_idx_ptr = thrust::raw_pointer_cast(argmax_idx.data());
-    vectorized_argsort_descending(batch_size*num_points, num_points, dist_map_ptr, argmax_idx_ptr);
+    thrust::device_vector<int> segments_aux(batch_size*num_points*num_points);
+    int *segment_aux_ptr = thrust::raw_pointer_cast(segments_aux.data());
+    index_assignment_kernel<<<blocks, threads>>>(batch_size*num_points, num_points, 
+            argmax_idx_ptr, segment_aux_ptr);
     cudaDeviceSynchronize();
+    vectorized_argsort_descending(batch_size*num_points, num_points, dist_map_ptr, 
+            argmax_idx_ptr, segment_aux_ptr);
+    cudaDeviceSynchronize();
+    /* std::cout << "argsort time: " << dtime_usec(tic)/(float)USECPSEC << "s" << std::endl; */
+
+    /* tic = dtime_usec(0); */
     thrust::device_vector<bool> sampled(batch_size*num_points, false);
     bool *sampled_ptr = thrust::raw_pointer_cast(sampled.data());
     AT_DISPATCH_INTEGRAL_TYPES(out.type(), "batch_sampling_kernel", ([&] {
@@ -105,8 +139,10 @@ void fps_cuda_forward(at::Tensor pcs, at::Tensor out) {
                 argmax_idx_ptr, sampled_ptr, out.data<scalar_t>());
     }));
     cudaDeviceSynchronize(); 
+    /* std::cout << "batch sampling time: " << dtime_usec(tic)/(float)USECPSEC << "s" << std::endl; */
 }
 
+// A simpler implementation without arg-sorting the distance.
 template <typename scalar_t>
 __global__ void fps_one_pass_kernel(const size_t batch_size, const size_t num_points,
         const size_t num_centroids, const scalar_t* __restrict__ pcs, bool* __restrict__ sampled,
