@@ -16,7 +16,8 @@
 #include <thrust/execution_policy.h>
 #include <thrust/functional.h>
 #include <thrust/fill.h>
-#include <thrust/copy.h>
+#include <thrust/iterator/zip_iterator.h>
+#include <thrust/tuple.h>
 
 // Timer of debug purpose
 #include <iostream>
@@ -38,11 +39,8 @@ void vectorized_argsort_descending(const int n, const int m, scalar_t *d_data,
     thrust::device_ptr<scalar_t> data_ptr = thrust::device_pointer_cast<scalar_t>(d_data);
     thrust::device_ptr<index_t> idx_ptr = thrust::device_pointer_cast<index_t>(d_idx);
     thrust::device_ptr<int> segments_ptr = thrust::device_pointer_cast<int>(d_segments);
-    thrust::device_vector<scalar_t> d_data_copy(n*m);
-    thrust::copy(thrust::device, data_ptr, data_ptr+n*m, d_data_copy.begin());
-    thrust::stable_sort_by_key(thrust::device, d_data, d_data+n*m, segments_ptr,
-            thrust::greater<scalar_t>());
-    thrust::stable_sort_by_key(thrust::device, d_data_copy.begin(), d_data_copy.end(), idx_ptr,
+    thrust::stable_sort_by_key(thrust::device, d_data, d_data+n*m,
+            thrust::make_zip_iterator(thrust::make_tuple(segments_ptr, idx_ptr)),
             thrust::greater<scalar_t>());
     thrust::stable_sort_by_key(thrust::device, segments_ptr, segments_ptr+n*m, idx_ptr);
 }
