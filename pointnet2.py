@@ -50,8 +50,8 @@ class PointNet2MSG(nn.Module):
         self.fc3 = nn.Linear(256, out_channels)
         self.bn1 = nn.BatchNorm1d(512)
         self.bn2 = nn.BatchNorm1d(256)
-        self.dp1 = nn.Dropout(p=0.4)
-        self.dp2 = nn.Dropout(p=0.4)
+        self.dp1 = nn.Dropout(p=0.6)
+        self.dp2 = nn.Dropout(p=0.6)
         self.reset_parameters()
 
     def forward(self, pt_coordinates, pt_features=None):
@@ -154,11 +154,6 @@ class FarthestPointSample(nn.Module):
                                      device=pt_coordinates.device,
                                      requires_grad=False)
             return centroids.unsqueeze(0).repeat(pt_coordinates.size(0), 1)
-        # out = torch.zeros(pt_coordinates.size(0), self.num_centroids,
-        #                   dtype=torch.int64, device=pt_coordinates.device,
-        #                   requires_grad=False)
-        # for i in range(out.size(0)):
-        #     out[i] = torch.randperm(pt_coordinates.size(-1))[:self.num_centroids]
         out = FarthestPointSampleFunction.apply(pt_coordinates,
                                                 self.num_centroids)
         return out

@@ -23,7 +23,7 @@ def parse_args():
     parser.add_argument('--dataset', type=str, default='modelnet40', help='Which dataset to train and test on')
     parser.add_argument('--cuda_on', type=bool, default=True, help='Whether to train and test on GPUs')
     parser.add_argument('--rng_seed', type=int, default=-1, help='Random seed')
-    parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training')
+    parser.add_argument('--batch_size', type=int, default=16, help='Batch size for training')
     parser.add_argument('--resume', type=str, default=None, help='Resume from checkpoint')
     parser.add_argument('--num_workers', type=int, default=4, help='No of workers for data loading')
     parser.add_argument('--epochs', type=int, default=250, help='Total epochs to go through for training')
@@ -35,10 +35,9 @@ def parse_args():
     parser.add_argument('--stepsize', type=int, default=20, help='How many epochs should decrease lr')
     parser.add_argument('--optimizer', type=str, default='adam', help='Which optimizer to use (SGD/ADAM)')
     parser.add_argument('--num_points', type=int, default=1024, help='No of datapoints for each model')
-    parser.add_argument('--lambda', type=float, dest='lmbda', default=0.016, help='lambda between cls loss and reg loss')
     parser.add_argument('--snapshot_interval', type=int, default=50, help='How many epochs should make a snapshot')
     parser.add_argument('--test_interval', type=int, default=1, help='How many epochs should run test; negative means dont run')
-    parser.add_argument('--test_batch_size', type=int, default=4, help='Batch size for testing')
+    parser.add_argument('--test_batch_size', type=int, default=32, help='Batch size for testing')
     parser.add_argument('--multigpu', type=bool, default=False, help='Whether to train on multiple gpus')
     parser.add_argument('--bn_momentum', type=float, default=0.5, help='Initial value of bn momentum')
     parser.add_argument('--bn_stepsize', type=int, default=20, help='How many epoch should decrease bn momentum')
@@ -127,7 +126,7 @@ def train_model(args):
         if args.snapshot_interval > 0 and \
                 ((e + 1) % args.snapshot_interval == 0):
             filename = os.path.join(args.root_path, '{}.{}-{}.pth'.format(
-                'PointNetCls', args.dataset, e+1
+                'PointNet2Cls', args.dataset, e+1
             ))
             logger.info('Saving model to %s', filename)
             torch.save(point_net.state_dict(), filename)
@@ -153,7 +152,7 @@ def train_model(args):
         logger.info('Elapsed time for epoch %d: %.3fs', e+1, time.time()-etic)
     if args.snapshot_interval > 0:
         filename = os.path.join(args.root_path, '{}.{}.pth'.format(
-            'PointNetCls', args.dataset
+            'PointNet2Cls', args.dataset
         ))
         logger.info('Saving final model to %s', filename)
         torch.save(point_net.state_dict(), filename)
