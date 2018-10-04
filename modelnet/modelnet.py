@@ -75,10 +75,14 @@ class PCAugmentation(object):
     """Simple augmentation for point cloud data."""
 
     def __call__(self, pc):
-        perm = np.random.permutation(pc.shape[1])
-        pc = pc[:, perm, :]
         pc = mp.rotate_point_cloud(pc)
-        pc = mp.jitter_point_cloud(pc)
+        pc = mp.rotate_perturbation_point_cloud(pc)
+        jittered_pc = mp.random_scale_point_cloud(pc[:, :, :3])
+        jittered_pc = mp.shift_point_cloud(jittered_pc)
+        jittered_pc = mp.jitter_point_cloud(jittered_pc)
+        pc[:, :, :3] = jittered_pc
+        for idx in range(pc.shape[0]):
+            pc[idx] = pc[idx, np.random.permutation(pc.shape[1]), :]
         return pc.astype(np.float32)
 
 
