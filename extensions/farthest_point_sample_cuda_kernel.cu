@@ -407,13 +407,79 @@ __global__ void fps2_kernel(int batch_size, int num_points, int num_centroids, c
     }
 }
 
+int mylog2(int index) {
+    int target = 0;
+    while (index >>= 1)
+        ++target;
+    return target;
+}
+
+// assuming num_points <= 1024
 void fps_cuda_2(at::Tensor pcs, at::Tensor out) {
     int batch_size = pcs.size(0);
     int num_centroids = out.size(1);
     int num_points = pcs.size(2);
-    int threads = 1024;
-    AT_DISPATCH_FLOATING_TYPES(pcs.type(), "fps1_kernel", ([&] {
-        fps2_kernel<scalar_t, 1024><<<batch_size, threads>>>(batch_size, num_points, num_centroids,
-                pcs.data<scalar_t>(), out.data<int64_t>());
-    }));
+    switch(mylog2(num_points-1)) {
+        // since we assme num_points <= 1024.
+        case 9:
+            AT_DISPATCH_FLOATING_TYPES(pcs.type(), "fps1_kernel", ([&] {
+                fps2_kernel<scalar_t, 1024><<<batch_size, 1024>>>(batch_size, num_points, num_centroids,
+                        pcs.data<scalar_t>(), out.data<int64_t>());
+            }));
+            break;
+        case 8:
+            AT_DISPATCH_FLOATING_TYPES(pcs.type(), "fps1_kernel", ([&] {
+                fps2_kernel<scalar_t, 512><<<batch_size, 512>>>(batch_size, num_points, num_centroids,
+                        pcs.data<scalar_t>(), out.data<int64_t>());
+            }));
+            break;
+        case 7:
+            AT_DISPATCH_FLOATING_TYPES(pcs.type(), "fps1_kernel", ([&] {
+                fps2_kernel<scalar_t, 256><<<batch_size, 256>>>(batch_size, num_points, num_centroids,
+                        pcs.data<scalar_t>(), out.data<int64_t>());
+            }));
+            break;
+        case 6:
+            AT_DISPATCH_FLOATING_TYPES(pcs.type(), "fps1_kernel", ([&] {
+                fps2_kernel<scalar_t, 128><<<batch_size, 128>>>(batch_size, num_points, num_centroids,
+                        pcs.data<scalar_t>(), out.data<int64_t>());
+            }));
+            break;
+        case 5:
+            AT_DISPATCH_FLOATING_TYPES(pcs.type(), "fps1_kernel", ([&] {
+                fps2_kernel<scalar_t, 64><<<batch_size, 64>>>(batch_size, num_points, num_centroids,
+                        pcs.data<scalar_t>(), out.data<int64_t>());
+            }));
+            break;
+        case 4:
+            AT_DISPATCH_FLOATING_TYPES(pcs.type(), "fps1_kernel", ([&] {
+                fps2_kernel<scalar_t, 32><<<batch_size, 32>>>(batch_size, num_points, num_centroids,
+                        pcs.data<scalar_t>(), out.data<int64_t>());
+            }));
+            break;
+        case 3:
+            AT_DISPATCH_FLOATING_TYPES(pcs.type(), "fps1_kernel", ([&] {
+                fps2_kernel<scalar_t, 16><<<batch_size, 16>>>(batch_size, num_points, num_centroids,
+                        pcs.data<scalar_t>(), out.data<int64_t>());
+            }));
+            break;
+        case 2:
+            AT_DISPATCH_FLOATING_TYPES(pcs.type(), "fps1_kernel", ([&] {
+                fps2_kernel<scalar_t, 8><<<batch_size, 8>>>(batch_size, num_points, num_centroids,
+                        pcs.data<scalar_t>(), out.data<int64_t>());
+            }));
+            break;
+        case 1:
+            AT_DISPATCH_FLOATING_TYPES(pcs.type(), "fps1_kernel", ([&] {
+                fps2_kernel<scalar_t, 4><<<batch_size, 4>>>(batch_size, num_points, num_centroids,
+                        pcs.data<scalar_t>(), out.data<int64_t>());
+            }));
+            break;
+        case 0:
+            AT_DISPATCH_FLOATING_TYPES(pcs.type(), "fps1_kernel", ([&] {
+                fps2_kernel<scalar_t, 2><<<batch_size, 2>>>(batch_size, num_points, num_centroids,
+                        pcs.data<scalar_t>(), out.data<int64_t>());
+            }));
+            break;
+    }
 }
