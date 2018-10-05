@@ -260,3 +260,160 @@ void fps_cuda_1(at::Tensor pcs, at::Tensor out) {
                 pcs.data<scalar_t>(), out.data<int64_t>());
     }));
 }
+
+template <typename scalar_t, unsigned int blockSize>
+__global__ void fps2_kernel(int batch_size, int num_points, int num_centroids, const scalar_t *pcs,
+        int64_t *centroid_idx) {
+    // shared memory
+    __shared__ float dists[blockSize];
+    __shared__ int64_t max_idx[blockSize];
+    __shared__ bool sampled[blockSize];
+
+    int64_t batch = blockIdx.x;
+    int64_t tid = threadIdx.x;
+
+    // loop over all centroids
+    centroid_idx[batch*num_centroids] = 0;
+    sampled[tid] = (tid == 0) ? true : false;
+    __syncthreads();
+    for (int64_t i = 1; i < num_centroids; ++i) {
+        int64_t prev_idx = centroid_idx[batch*num_centroids+i-1];
+        if (tid < num_points) {
+            scalar_t x1 = pcs[(batch*3+0)*num_points+prev_idx];
+            scalar_t x2 = pcs[(batch*3+1)*num_points+prev_idx];
+            scalar_t x3 = pcs[(batch*3+2)*num_points+prev_idx];
+            scalar_t y1 = pcs[(batch*3+0)*num_points+tid];
+            scalar_t y2 = pcs[(batch*3+1)*num_points+tid];
+            scalar_t y3 = pcs[(batch*3+2)*num_points+tid];
+            dists[tid] = static_cast<float>((x1-y1)*(x1-y1) + (x2-y2)*(x2-y2) + (x3-y3)*(x3-y3));
+        } else {
+            dists[tid] = 0.;
+        }
+        max_idx[tid] = tid;
+        __syncthreads();
+
+        // do reduction (fully unrolled!)
+        if ((blockSize >= 1024) && (tid < 512)) {
+            if (!sampled[max_idx[tid+512]]) {
+                if (sampled[max_idx[tid]] || (dists[tid] < dists[tid+512])) {
+                    dists[tid] = dists[tid+512];
+                    max_idx[tid] = max_idx[tid+512];
+                }
+            }
+        }
+        __syncthreads();
+
+        if ((blockSize >= 512) && (tid < 256)) {
+            if (!sampled[max_idx[tid+256]]) {
+                if (sampled[max_idx[tid]] || (dists[tid] < dists[tid+256])) {
+                    dists[tid] = dists[tid+256];
+                    max_idx[tid] = max_idx[tid+256];
+                }
+            }
+        }
+        __syncthreads();
+
+        if ((blockSize >= 256) && (tid < 128)) {
+            if (!sampled[max_idx[tid+128]]) {
+                if (sampled[max_idx[tid]] || (dists[tid] < dists[tid+128])) {
+                    dists[tid] = dists[tid+128];
+                    max_idx[tid] = max_idx[tid+128];
+                }
+            }
+        }
+        __syncthreads();
+
+        if ((blockSize >= 128) && (tid < 64)) {
+            if (!sampled[max_idx[tid+64]]) {
+                if (sampled[max_idx[tid]] || (dists[tid] < dists[tid+64])) {
+                    dists[tid] = dists[tid+64];
+                    max_idx[tid] = max_idx[tid+64];
+                }
+            }
+        }
+        __syncthreads();
+
+        if ((blockSize >= 64) && (tid < 32)) {
+            if (!sampled[max_idx[tid+32]]) {
+                if (sampled[max_idx[tid]] || (dists[tid] < dists[tid+32])) {
+                    dists[tid] = dists[tid+32];
+                    max_idx[tid] = max_idx[tid+32];
+                }
+            }
+        }
+        __syncthreads();
+
+        if ((blockSize >= 32) && (tid < 16)) {
+            if (!sampled[max_idx[tid+16]]) {
+                if (sampled[max_idx[tid]] || (dists[tid] < dists[tid+16])) {
+                    dists[tid] = dists[tid+16];
+                    max_idx[tid] = max_idx[tid+16];
+                }
+            }
+        }
+        __syncthreads();
+
+        if ((blockSize >= 16) && (tid < 8)) {
+            if (!sampled[max_idx[tid+8]]) {
+                if (sampled[max_idx[tid]] || (dists[tid] < dists[tid+8])) {
+                    dists[tid] = dists[tid+8];
+                    max_idx[tid] = max_idx[tid+8];
+                }
+            }
+        }
+        __syncthreads();
+
+        if ((blockSize >= 8) && (tid < 4)) {
+            if (!sampled[max_idx[tid+4]]) {
+                if (sampled[max_idx[tid]] || (dists[tid] < dists[tid+4])) {
+                    dists[tid] = dists[tid+4];
+                    max_idx[tid] = max_idx[tid+4];
+                }
+            }
+        }
+        __syncthreads();
+
+        if ((blockSize >= 4) && (tid < 2)) {
+            if (!sampled[max_idx[tid+2]]) {
+                if (sampled[max_idx[tid]] || (dists[tid] < dists[tid+2])) {
+                    dists[tid] = dists[tid+2];
+                    max_idx[tid] = max_idx[tid+2];
+                }
+            }
+        }
+        __syncthreads();
+
+        if ((blockSize >= 2) && (tid < 1)) {
+            if (!sampled[max_idx[tid+1]]) {
+                if (sampled[max_idx[tid]] || (dists[tid] < dists[tid+1])) {
+                    dists[tid] = dists[tid+1];
+                    max_idx[tid] = max_idx[tid+1];
+                }
+            }
+        }
+        __syncthreads();
+
+        // write result to global memory
+        if (tid == 0) {
+            centroid_idx[batch*num_centroids+i] = max_idx[0];
+        }
+
+        // update sampled record
+        if (tid == max_idx[0]) {
+            sampled[max_idx[0]] = true;
+        }
+        __syncthreads();
+
+    }
+}
+
+void fps_cuda_2(at::Tensor pcs, at::Tensor out) {
+    int batch_size = pcs.size(0);
+    int num_centroids = out.size(1);
+    int num_points = pcs.size(2);
+    int threads = 1024;
+    AT_DISPATCH_FLOATING_TYPES(pcs.type(), "fps1_kernel", ([&] {
+        fps2_kernel<scalar_t, 1024><<<batch_size, threads>>>(batch_size, num_points, num_centroids,
+                pcs.data<scalar_t>(), out.data<int64_t>());
+    }));
+}
