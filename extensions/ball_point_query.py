@@ -8,8 +8,9 @@ class BallPointQueryFunction(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, pcs, centroids, radius, max_samples):
-        outputs = bpq_cuda.forward(pcs, centroids, radius, max_samples)
-        group_idx = outputs[0].long()
+        group_idx = torch.zeros(pcs.size(0), centroids.size(-1), max_samples,
+                                dtype=torch.int64, device=pcs.device)
+        bpq_cuda.forward2(pcs, centroids, group_idx, radius, max_samples)
         ctx.mark_non_differentiable(group_idx)
         return group_idx
 
