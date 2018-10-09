@@ -10,7 +10,7 @@ class FarthestPointSampleFunction(torch.autograd.Function):
     def forward(ctx, pcs, num_centroids):
         out = torch.zeros(pcs.size(0), num_centroids, dtype=torch.int64,
                           device=pcs.device)
-        fps_cuda.forward5(pcs, out)
+        fps_cuda.forward(pcs, out)
         ctx.mark_non_differentiable(out)
         return out
 

@@ -30,7 +30,7 @@ def parse_args():
     parser.add_argument('--lr', '--learning-rate', type=float, default=1e-3, help='initial learning rate')
     parser.add_argument('--min_lr', type=float, default=1e-5, help='Minimal value of learning rate')
     parser.add_argument('--momentum', type=float, default=0.9, help='lr momentum for SGD')
-    parser.add_argument('--weight_decay', type=float, default=0., help='Weight decay for optimizer')
+    parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay for optimizer')
     parser.add_argument('--gamma', type=float, default=0.7, help='Gamma update for optimizer')
     parser.add_argument('--stepsize', type=int, default=20, help='How many epochs should decrease lr')
     parser.add_argument('--optimizer', type=str, default='adam', help='Which optimizer to use (SGD/ADAM)')
