@@ -55,20 +55,23 @@ class PointNet2MSG(nn.Module):
         self.reset_parameters()
 
     def forward(self, pt_coordinates, pt_features=None):
-        centroids1 = self.fps1(pt_coordinates)  # (batch_size, num_centroids1)
+        # (batch_size, num_centroids1)
+        centroid_idx1 = self.fps1(pt_coordinates)
+        centroids1 = pt_coordinates.gather(
+            2, centroid_idx1.unsqueeze(1).repeat(1, 3, 1)
+        )
         pt_features = torch.cat([
             m(pt_coordinates, pt_features, centroids1) for m in self.msg1
         ], dim=1)  # (batch_zise, feat_len, num_centroids1)
-        pt_coordinates = pt_coordinates.gather(
-            2, centroids1.unsqueeze(1).repeat(1, pt_coordinates.size(1), 1)
-        )  # (batch_size, 3, num_centroids1)
-        centroids2 = self.fps2(pt_coordinates)
+        pt_coordinates = centroids1  # (batch_size, 3, num_centroids1)
+        centroid_idx2 = self.fps2(pt_coordinates)
+        centroids2 = pt_coordinates.gather(
+            2, centroid_idx2.unsqueeze(1).repeat(1, 3, 1)
+        )
         pt_features = torch.cat([
             m(pt_coordinates, pt_features, centroids2) for m in self.msg2
         ], dim=1)
-        pt_coordinates = pt_coordinates.gather(
-            2, centroids2.unsqueeze(1).repeat(1, pt_coordinates.size(1), 1)
-        )
+        pt_coordinates = centroids2
         pt_features = self.msg3(pt_coordinates, pt_features)
         pt_features = F.relu(self.bn1(self.fc1(pt_features)))
         pt_features = self.dp1(pt_features)
@@ -111,16 +114,18 @@ class PointNet2SSG(nn.Module):
         self.reset_parameters()
 
     def forward(self, pt_coordinates, pt_features=None):
-        centroids1 = self.fps1(pt_coordinates)
+        centroid_idx1 = self.fps1(pt_coordinates)
+        centroids1 = pt_coordinates.gather(
+            2, centroid_idx1.unsqueeze(1).repeat(1, 3, 1)
+        )
         pt_features = self.ssg1(pt_coordinates, pt_features, centroids1)
-        pt_coordinates = pt_coordinates.gather(
-            2, centroids1.unsqueeze(1).repeat(1, pt_coordinates.size(1), 1)
+        pt_coordinates = centroids1
+        centroid_idx2 = self.fps2(pt_coordinates)
+        centroids2 = pt_coordinates.gather(
+            2, centroid_idx2.unsqueeze(1).repeat(1, 3, 1)
         )
-        centroids2 = self.fps2(pt_coordinates)
         pt_features = self.ssg2(pt_coordinates, pt_features, centroids2)
-        pt_coordinates = pt_coordinates.gather(
-            2, centroids2.unsqueeze(1).repeat(1, pt_coordinates.size(1), 1)
-        )
+        pt_coordinates = centroids2
         pt_features = self.ssg3(pt_coordinates, pt_features)
         pt_features = F.relu(self.bn1(self.fc1(pt_features)))
         pt_features = self.dp1(pt_features)
@@ -211,24 +216,21 @@ class SetAbstraction(nn.Module):
         self.pool = nn.MaxPool2d([1, max_samples])
         self.reset_parameters()
 
-    def forward(self, pt_coordinates, pt_features, centroid_idx):
+    def forward(self, pt_coordinates, pt_features, centroids):
         """
         :param pt_coordinates: [batch_size, 3, num_points]
             The xyz coordinates for each point.
         :param pt_features: [batch_size, in_channels, num_points] or None
             Features for each point. If it is None, then use pt_coordinates
             as features.
-        :param centroid_idx: [batch_size, num_centroids]
-            Indices at which the points are centroids.
+        :param centroids: [batch_size, 3, num_centorids]
+            Centorids of which the points should be gathered.
         :return:
             features: (batch_size, mlp_channels[-1], num_centroids)
                 The pooled features for each group.
         """
-        num_centroids = centroid_idx.size(-1)
         # (batch_size, 3, num_centroids)
-        centroids = pt_coordinates.gather(
-            2, centroid_idx.unsqueeze(1).repeat(1, pt_coordinates.size(1), 1)
-        )
+        num_centroids = centroids.size(-1)
         # (batch_size, num_centroids, max_samples)
         group_idx = self.point_query(pt_coordinates, centroids)
         group_idx = group_idx.view(group_idx.size(0), -1)
