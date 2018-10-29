@@ -1,12 +1,14 @@
 """Solver configs."""
 import logging
 import os
-import chino.configurator as cc
 from chino.frozen_dict import FrozenDict
 
 logger = logging.getLogger(__name__)
 __C = FrozenDict()
 cfg = __C  # for importing
+
+# The name of the solver
+__C.NAME = 'default'
 
 # Learning rate decay policy, available options are:
 #   - fixed
@@ -55,3 +57,17 @@ __C.BN.STEPSIZE = -1
 
 # decay rate for momentum
 __C.BN.GAMMA = 0.9
+
+
+# For how many iterations should snapshot the network.
+__C.SNAPSHOT.ITER = -1
+
+# Snapshot template
+__C.SNAPSHOT.TEMPLATE = os.path.join(__C.OUTPUT_PATH,
+                                     __C.NAME + "-{}.pth")
+
+
+#####################################
+# Freezing the configs.
+#####################################
+__C.freeze()
